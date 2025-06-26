@@ -281,35 +281,47 @@ AWS,Amazon Simple Storage Service,Amazon Glacier,ca-central-1,1 GB,$0.00,Azure,B
 AWS,Amazon Simple Storage Service,Standard,ap-southeast-2,1 GB,$0.03,Azure,Blob Storage- Hot,AustraliaEast,$0.03,GCP,Cloud Storage,Standard,australia-southeast1,0.02
 """
 
+def parse_memory(mem_str):
+    if isinstance(mem_str, (int, float)): return mem_str
+    if isinstance(mem_str, str):
+        numbers = re.findall(r"[-+]?\d*\.\d+|\d+", mem_str)
+        if numbers: return float(numbers[0])
+    return 0
+
+def parse_cost(cost_str):
+    if isinstance(cost_str, (int, float)): return float(cost_str)
+    if isinstance(cost_str, str):
+        try: return float(cost_str.replace('$', '').replace(',', ''))
+        except (ValueError, TypeError): return 0.0
+    return 0.0
+
 @st.cache_data(ttl="1h")
-def load_and_process_data():
-    """Loads and normalizes the complete dataset from the embedded strings."""
+def load_and_process_data(ec2_csv, rds_csv, s3_csv):
+    """
+    Loads and normalizes the complete dataset from the embedded strings.
+    This function is cached by Streamlit for performance.
+    """
     try:
         # --- Process EC2 Data ---
-        ec2_df = pd.read_csv(StringIO(EC2_DATA_STRING))
+        ec2_df = pd.read_csv(StringIO(ec2_csv))
         ec2_data = []
         for _, row in ec2_df.iterrows():
-            # AWS
             ec2_data.append({'cloud': 'aws', 'region': row['Region'], 'meter': row['Instance Type'], 'vcpu': int(row['vCPUs']), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['AWS Monthly Cost'])})
-            # Azure
             ec2_data.append({'cloud': 'azure', 'region': row['AzureRegion'], 'meter': row['Azure Meter'], 'vcpu': int(row['vCPUs']), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['Azure Monthly Cost'])})
-            # GCP
-            if pd.notna(row['GCP SKU']) and row['GCP Region'] != '#N/A':
+            if pd.notna(row.get('GCP SKU')) and row.get('GCP Region') != '#N/A':
                 ec2_data.append({'cloud': 'gcp', 'region': row['GCP Region'], 'meter': row['GCP SKU'], 'vcpu': int(row['vCPUs']), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['GCP Monthly Cost'])})
 
         # --- Process RDS Data ---
-        # Note: The RDS string is long, so it's programmatically completed from your provided data.
-        full_rds_data_string = RDS_DATA_STRING # In a real script, the full string would be here.
-        rds_df = pd.read_csv(StringIO(full_rds_data_string))
+        rds_df = pd.read_csv(StringIO(rds_csv))
         rds_data = []
         for _, row in rds_df.iterrows():
             rds_data.append({'cloud': 'aws', 'meter': row['Meter'], 'region': row['Region'], 'vcpu': int(row['vCPUs']), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['AWS- On Demand Monthly Cost'])})
             rds_data.append({'cloud': 'azure', 'meter': row['Meter.1'], 'region': row['AzureRegion'], 'vcpu': int(row['vCPUs']), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['Azure Monthly Cost'])})
-            if pd.notna(row['GCP SKU']):
+            if pd.notna(row.get('GCP SKU')):
                  rds_data.append({'cloud': 'gcp', 'meter': row['GCP SKU'], 'region': row['GCP Region'], 'vcpu': int(row['vCPUs.1']), 'memory': parse_memory(row['Memory.1']), 'cost': parse_cost(row['GCP Ondemand Cost/month'])})
 
         # --- Process S3 Data ---
-        s3_df = pd.read_csv(StringIO(S3_DATA_STRING))
+        s3_df = pd.read_csv(StringIO(s3_csv))
         s3_data = []
         for _, row in s3_df.iterrows():
             s3_data.append({'cloud': 'aws', 'tier': row['Meter'], 'region': row['Region'], 'costPerGB': parse_cost(row['AWS Ondemand Cost'])})
@@ -317,17 +329,17 @@ def load_and_process_data():
             s3_data.append({'cloud': 'gcp', 'tier': row['Meter.2'], 'region': row['Region.2'], 'costPerGB': parse_cost(row['GCP Ondemand Cost'])})
 
         # Remove duplicates and clean up
-        processed_ec2 = [dict(t) for t in {tuple(d.items()) for d in ec2_data if d['cost'] > 0}]
+        processed_ec2 = [dict(t) for t in {tuple(d.items()) for d in ec2_data if d.get('cost', 0) > 0}]
         processed_rds = [dict(t) for t in {tuple(d.items()) for d in rds_data if d.get('cost', 0) > 0}]
-        processed_s3 = [dict(t) for t in {tuple(d.items()) for d in s3_data if d['costPerGB'] > 0}]
+        processed_s3 = [dict(t) for t in {tuple(d.items()) for d in s3_data if d.get('costPerGB', 0) > 0}]
 
         return {'ec2': processed_ec2, 'rds': processed_rds, 's3': processed_s3}
     except Exception as e:
-        st.error(f"An error occurred while processing the data: {e}")
+        st.error(f"An error occurred while processing the data. Please check the data format. Error: {e}")
         return None
 
-
-RAW_DATA = load_and_process_data()
+# Load the data by calling the cached function
+RAW_DATA = load_and_process_data(EC2_DATA_STRING, RDS_DATA_STRING, S3_DATA_STRING)
 
 # --- Helper Functions ---
 def find_equivalent(primary_instance, service_type):
@@ -408,12 +420,22 @@ if st.session_state.comparison_set:
             specs = ['Instance Type', 'vCPU', 'Memory', 'Region']
             table_data = {'Specification': specs}
             for cloud in ['azure', 'aws', 'gcp']:
-                table_data[cloud.upper()] = [results.get(cloud, {}).get(k, 'N/A') for k in ['meter', 'vcpu', 'memory', 'region']]
+                cloud_data = results.get(cloud, {})
+                table_data[cloud.upper()] = [
+                    cloud_data.get('meter', 'N/A'),
+                    cloud_data.get('vcpu', 'N/A'),
+                    cloud_data.get('memory', 'N/A'),
+                    cloud_data.get('region', 'N/A')
+                ]
         else:
             specs = ['Storage Tier', 'Region']
             table_data = {'Specification': specs}
             for cloud in ['azure', 'aws', 'gcp']:
-                table_data[cloud.upper()] = [results.get(cloud, {}).get(k.lower().replace(' ', ''), 'N/A') for k in specs]
+                cloud_data = results.get(cloud, {})
+                table_data[cloud.upper()] = [
+                    cloud_data.get('tier', 'N/A'),
+                    cloud_data.get('region', 'N/A')
+                ]
         df = pd.DataFrame(table_data).set_index('Specification')
         st.table(df)
 
