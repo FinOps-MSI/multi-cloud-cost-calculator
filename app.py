@@ -314,7 +314,8 @@ def load_and_process_data(ec2_csv, rds_csv, s3_csv):
             # Extract data based on column positions
             aws_region = fields[0]
             aws_meter = fields[2]
-            aws_vcpu = int(fields[4])
+            # FIX: Convert to float first, then int, to handle decimal values.
+            aws_vcpu = int(float(fields[4]))
             aws_memory = parse_memory(fields[5])
             aws_cost = parse_cost(fields[13])
 
@@ -340,7 +341,8 @@ def load_and_process_data(ec2_csv, rds_csv, s3_csv):
             # Extract data, handling potential empty fields
             aws_meter = fields[2]
             aws_region = fields[4]
-            aws_vcpu = int(fields[6])
+            # FIX: Convert to float first, then int.
+            aws_vcpu = int(float(fields[6]))
             aws_memory = parse_memory(fields[7])
             aws_cost = parse_cost(fields[15])
 
@@ -350,7 +352,8 @@ def load_and_process_data(ec2_csv, rds_csv, s3_csv):
 
             gcp_meter = fields[21]
             gcp_region = fields[22]
-            gcp_vcpu = int(fields[24]) if fields[24].strip() else aws_vcpu
+            # FIX: Convert to float first, then int.
+            gcp_vcpu = int(float(fields[24])) if fields[24].strip() else aws_vcpu
             gcp_memory = parse_memory(fields[25]) if fields[25].strip() else aws_memory
             gcp_cost = parse_cost(fields[27])
 
