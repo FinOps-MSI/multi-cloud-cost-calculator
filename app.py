@@ -7,7 +7,7 @@ from datetime import datetime
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Cross Examine",
-    page_icon="⚖️",
+    page_icon="☁️",
     layout="wide"
 )
 
@@ -18,6 +18,19 @@ def load_css():
         <style>
             .stApp { background-color: #FFFFFF; }
             h1, h3 { font-weight: 600; }
+            
+            /* --- Button Color Override --- */
+            button.st-button-primary {
+                background-color: #0052CC !important;
+                color: white !important;
+                border: 1px solid #0052CC !important;
+            }
+            button.st-button-primary:hover {
+                background-color: #0041A3 !important;
+                border: 1px solid #0041A3 !important;
+            }
+
+            /* --- Card Styles --- */
             .card {
                 background-color: white; border-radius: 10px; padding: 20px;
                 box-shadow: 0 4px 8px 0 rgba(0,0,0,0.08); border: 1px solid #E0E0E0;
@@ -27,8 +40,9 @@ def load_css():
             .recommended-card { border: 2px solid #28a745; }
             .card-header { font-size: 1.5em; font-weight: bold; margin-bottom: 15px; color: #0052CC; }
             .recommended-badge { background-color: #28a745; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.8em; }
-            .cost-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.95em; }
             .total-cost { font-size: 2em; font-weight: bold; color: #333; text-align: right; margin-top: 20px; }
+            
+            /* --- Savings Analysis Card --- */
             .savings-card {
                 background-color: white; border-radius: 10px; padding: 25px;
                 box-shadow: 0 4px 8px 0 rgba(0,0,0,0.08); border: 1px solid #E0E0E0;
@@ -41,11 +55,13 @@ def load_css():
             .metric-container { text-align: center; flex: 1; }
             .metric-value { font-size: 2.2em; font-weight: 600; color: #28a745; }
             .metric-label { font-size: 1em; color: #6c757d; }
+            
+            /* --- Bucket Expander --- */
             .st-expander { border: 1px solid #E0E0E0 !important; border-radius: 10px !important; }
         </style>
     """, unsafe_allow_html=True)
 
-# --- Data Loading and Processing ---
+# --- Data Loading and Processing Functions ---
 GOOGLE_SHEET_URL_EC2 = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6nm8tGltr086h1MhnosWrIbP3wJiLEIlEK4ykpvaBhQ7YMzC3X7CNA6MeRKH7WUxHIeDCpASTdYnZ/pub?gid=0&single=true&output=csv"
 GOOGLE_SHEET_URL_RDS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6nm8tGltr086h1MhnosWrIbP3wJiLEIlEK4ykpvaBhQ7YMzC3X7CNA6MeRKH7WUxHIeDCpASTdYnZ/pub?gid=1524734883&single=true&output=csv"
 GOOGLE_SHEET_URL_S3 = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6nm8tGltr086h1MhnosWrIbP3wJiLEIlEK4ykpvaBhQ7YMzC3X7CNA6MeRKH7WUxHIeDCpASTdYnZ/pub?gid=1926651960&single=true&output=csv"
@@ -100,8 +116,7 @@ if 'bucket' not in st.session_state:
 
 col1, col2 = st.columns([1, 4])
 with col1:
-    # Use your custom logo by providing its URL here.
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Motorola_Solutions_logo.svg/1024px-Motorola_Solutions_logo.svg.png", width=200)
+    st.image("https://i.imgur.com/7D73sYp.png", width=150)
 with col2:
     st.title("Cross Examine")
     st.caption("Enforcing the Clarity Clause in Multi-Cloud Decision-Making")
@@ -118,7 +133,7 @@ with st.container(border=True):
         service_type = st.selectbox("Service Type", RAW_DFS.keys())
     
     with col2:
-        df = RAW_DFS[service_type]
+        df = RAW_DFS.get(service_type)
         if df is None:
             st.error(f"Data for {service_type} could not be loaded."); st.stop()
         
@@ -127,15 +142,17 @@ with st.container(border=True):
             'Compute': {'aws': {'meter': 'Instance Type', 'region': 'Region', 'cost': 'AWS Monthly Cost'}, 'azure': {'meter': 'Azure Meter', 'region': 'AzureRegion', 'cost': 'Azure Monthly Cost'}, 'gcp': {'meter': 'GCP SKU', 'region': 'GCP Region', 'cost': 'GCP Monthly Cost', 'vcpu': 'vCPUs', 'memory': 'Memory'}, 'shared': {'vcpu': 'vCPUs', 'memory': 'Memory'}},
             'Database': {'aws': {'meter': 'Meter', 'region': 'Region', 'cost': 'AWS- On Demand Monthly Cost'}, 'azure': {'meter': 'Meter.1', 'region': 'AzureRegion', 'cost': 'Azure Monthly Cost'}, 'gcp': {'meter': 'GCP SKU', 'region': 'GCP Region', 'cost': 'GCP Ondemand Cost/month', 'vcpu': 'vCPUs.1', 'memory': 'Memory.1'}, 'shared': {'vcpu': 'vCPUs', 'memory': 'Memory'}}
         }
-        current_map, meter_col, region_col = col_maps[service_type], col_maps[service_type][selected_csp]['meter'], col_maps[service_type][selected_csp]['region']
+        current_map = col_maps[service_type]
+        meter_col = current_map[selected_csp]['meter']
+        region_col = current_map[selected_csp]['region']
         
         filtered_df = df.dropna(subset=[meter_col, region_col])
         instance_options = {f"{row[meter_col]}@{row[region_col]}": f"{row[meter_col]} ({row[region_col]})" for _, row in filtered_df.iterrows()}
         with col2:
-            selected_key = st.selectbox("Instance", options=instance_options.keys(), format_func=lambda x: instance_options.get(x, x), key=f"instance_{service_type}")
+            selected_key = st.selectbox("Instance", options=instance_options.keys(), format_func=lambda x: instance_options.get(x, x), key=f"instance_{selected_csp}_{service_type}")
         with col3:
-            quantity = st.number_input("Quantity", min_value=1, value=1, key=f"qty_{service_type}")
-            if st.button("Add to Bucket", type="primary", use_container_width=True):
+            quantity = st.number_input("Quantity", min_value=1, value=1, key=f"qty_{selected_csp}_{service_type}")
+            if st.button("Add to Bucket", type="primary", use_container_width=True, key=f"add_{selected_csp}_{service_type}"):
                 meter, region = selected_key.split('@')
                 equivalents = get_vm_comparison_from_row(df, selected_csp, meter, region, current_map)
                 if equivalents:
@@ -147,10 +164,10 @@ with st.container(border=True):
         tier_col = tier_col_map[selected_csp]
         filtered_df = df.dropna(subset=[tier_col])
         with col2:
-            selected_tier = st.selectbox("Storage Tier", options=filtered_df[tier_col].unique(), key=f"tier_{service_type}")
+            selected_tier = st.selectbox("Storage Tier", options=filtered_df[tier_col].unique(), key=f"tier_{selected_csp}")
         with col3:
-            storage_gb = st.number_input("Storage (GB)", min_value=1, value=1000, key=f"gb_{service_type}")
-            if st.button("Add to Bucket", type="primary", use_container_width=True):
+            storage_gb = st.number_input("Storage (GB)", min_value=1, value=1000, key=f"gb_{selected_csp}")
+            if st.button("Add to Bucket", type="primary", use_container_width=True, key=f"add_{selected_csp}_storage"):
                 equivalents = get_storage_comparison(df, selected_csp, selected_tier)
                 if equivalents:
                     st.session_state.bucket.append({"id": str(uuid.uuid4()), "service_type": service_type, "description": f"{storage_gb} GB of {selected_tier}", "equivalents": equivalents, "storage_gb": storage_gb})
@@ -224,7 +241,7 @@ if st.session_state.bucket:
         """
         st.markdown(metrics_html, unsafe_allow_html=True)
     else:
-        st.info("Add items from at least two different cloud providers to the bucket to see a savings analysis.")
+        st.info("Add items from clouds with different costs to see a savings analysis.")
 
 else:
     st.info("Your bucket is empty. Add a resource above to begin your cost comparison.")
