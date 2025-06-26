@@ -43,38 +43,44 @@ def load_and_process_data(ec2_url, rds_url, s3_url):
     """Loads and normalizes data from Google Sheets URLs."""
     try:
         # --- Process EC2 Data ---
-        ec2_df = pd.read_csv(ec2_url)
+        # UPDATED: Added on_bad_lines='warn' to handle malformed rows in the CSV.
+        # This prevents the app from crashing on tokenizing errors.
+        ec2_df = pd.read_csv(ec2_url, on_bad_lines='warn')
         ec2_data = []
         for _, row in ec2_df.iterrows():
+            # Check for the existence of columns before accessing them to avoid KeyErrors
+            if 'vCPUs' not in row or 'Memory' not in row: continue
             vcpu = int(float(row['vCPUs']))
             memory = parse_memory(row['Memory'])
-            if pd.notna(row['AWS Monthly Cost']) and parse_cost(row['AWS Monthly Cost']) > 0:
+            if pd.notna(row.get('AWS Monthly Cost')) and parse_cost(row.get('AWS Monthly Cost')) > 0:
                 ec2_data.append({'cloud': 'aws', 'region': row['Region'], 'meter': row['Instance Type'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['AWS Monthly Cost'])})
-            if pd.notna(row['Azure Monthly Cost']) and parse_cost(row['Azure Monthly Cost']) > 0:
+            if pd.notna(row.get('Azure Monthly Cost')) and parse_cost(row.get('Azure Monthly Cost')) > 0:
                 ec2_data.append({'cloud': 'azure', 'region': row['AzureRegion'], 'meter': row['Azure Meter'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['Azure Monthly Cost'])})
             if pd.notna(row.get('GCP Monthly Cost')) and row.get('GCP Region') != '#N/A' and parse_cost(row.get('GCP Monthly Cost')) > 0:
                 ec2_data.append({'cloud': 'gcp', 'region': row['GCP Region'], 'meter': row['GCP SKU'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['GCP Monthly Cost'])})
 
         # --- Process RDS Data ---
-        rds_df = pd.read_csv(rds_url)
+        # UPDATED: Added on_bad_lines='warn'
+        rds_df = pd.read_csv(rds_url, on_bad_lines='warn')
         rds_data = []
         for _, row in rds_df.iterrows():
-            if pd.notna(row['AWS- On Demand Monthly Cost']) and parse_cost(row['AWS- On Demand Monthly Cost']) > 0:
+            if pd.notna(row.get('AWS- On Demand Monthly Cost')) and parse_cost(row.get('AWS- On Demand Monthly Cost')) > 0:
                 rds_data.append({'cloud': 'aws', 'meter': row['Meter'], 'region': row['Region'], 'vcpu': int(float(row['vCPUs'])), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['AWS- On Demand Monthly Cost'])})
-            if pd.notna(row['Azure Monthly Cost']) and parse_cost(row['Azure Monthly Cost']) > 0:
+            if pd.notna(row.get('Azure Monthly Cost')) and parse_cost(row.get('Azure Monthly Cost')) > 0:
                 rds_data.append({'cloud': 'azure', 'meter': row['Meter.1'], 'region': row['AzureRegion'], 'vcpu': int(float(row['vCPUs'])), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['Azure Monthly Cost'])})
             if pd.notna(row.get('GCP SKU')) and pd.notna(row.get('GCP Ondemand Cost/month')) and parse_cost(row.get('GCP Ondemand Cost/month')) > 0:
-                 rds_data.append({'cloud': 'gcp', 'meter': row['GCP SKU'], 'region': row['GCP Region'], 'vcpu': int(float(row['vCPUs.1'])), 'memory': parse_memory(row['Memory.1']), 'cost': parse_cost(row['GCP Ondemand Cost/month'])})
+                rds_data.append({'cloud': 'gcp', 'meter': row['GCP SKU'], 'region': row['GCP Region'], 'vcpu': int(float(row['vCPUs.1'])), 'memory': parse_memory(row['Memory.1']), 'cost': parse_cost(row['GCP Ondemand Cost/month'])})
 
         # --- Process S3 Data ---
-        s3_df = pd.read_csv(s3_url)
+        # UPDATED: Added on_bad_lines='warn'
+        s3_df = pd.read_csv(s3_url, on_bad_lines='warn')
         s3_data = []
         for _, row in s3_df.iterrows():
-            if parse_cost(row['AWS Ondemand Cost']) > 0:
+            if pd.notna(row.get('AWS Ondemand Cost')) and parse_cost(row.get('AWS Ondemand Cost')) > 0:
                 s3_data.append({'cloud': 'aws', 'tier': row['Meter'], 'region': row['Region'], 'costPerGB': parse_cost(row['AWS Ondemand Cost'])})
-            if parse_cost(row['Azure Ondemand Cost']) > 0:
+            if pd.notna(row.get('Azure Ondemand Cost')) and parse_cost(row.get('Azure Ondemand Cost')) > 0:
                 s3_data.append({'cloud': 'azure', 'tier': row['Meter.1'], 'region': row['Region.1'], 'costPerGB': parse_cost(row['Azure Ondemand Cost'])})
-            if parse_cost(row['GCP Ondemand Cost']) > 0:
+            if pd.notna(row.get('GCP Ondemand Cost')) and parse_cost(row.get('GCP Ondemand Cost')) > 0:
                 s3_data.append({'cloud': 'gcp', 'tier': row['Meter.2'], 'region': row['Region.2'], 'costPerGB': parse_cost(row['GCP Ondemand Cost'])})
         
         # Remove duplicates and clean up
@@ -84,7 +90,7 @@ def load_and_process_data(ec2_url, rds_url, s3_url):
 
         return {'ec2': processed_ec2, 'rds': processed_rds, 's3': processed_s3}
     except Exception as e:
-        st.error(f"An error occurred while processing the data. Please check that the Google Sheet URLs are correct and publicly accessible. Error: {e}")
+        st.error(f"An error occurred while processing the data. Please check the Google Sheet URLs are correct and publicly accessible. Error: {e}")
         return None
 
 
@@ -120,7 +126,7 @@ st.title("☁️ Multi-Cloud Cost Calculator")
 st.write("Compare costs for a group of resources across AWS, Azure, and GCP.")
 
 if not RAW_DATA:
-    st.error("Data could not be loaded. Please check the script's data strings.")
+    st.error("Data could not be loaded. Please check the script's data strings and ensure the source sheets are formatted correctly.")
     st.stop()
 
 with st.container(border=True):
@@ -159,14 +165,18 @@ with st.container(border=True):
             if service_type in ['ec2', 'rds']:
                 meter, region = selected_instance_key.split('@')
                 primary_instance = next((i for i in RAW_DATA[service_type] if i['cloud'] == selected_csp and i['meter'] == meter and i['region'] == region), None)
-                new_item['description'] = f"{selected_csp_label} {service_label}: {primary_instance['meter']}"
-                new_item['equivalents'] = find_equivalent(primary_instance, service_type)
+                if primary_instance:
+                    new_item['description'] = f"{selected_csp_label} {service_label}: {primary_instance['meter']}"
+                    new_item['equivalents'] = find_equivalent(primary_instance, service_type)
 
             elif service_type == 's3':
                 new_item['description'] = f"{selected_csp_label} {service_label}: {selected_tier} ({storage_amount} GB)"
                 new_item['equivalents'] = get_s3_equivalents(selected_tier, storage_amount)
 
-            st.session_state.basket.append(new_item)
+            if new_item.get('equivalents'):
+                st.session_state.basket.append(new_item)
+            else:
+                st.warning("Could not find equivalent services to add to basket.")
 
 # --- Display Basket and Totals ---
 if st.session_state.basket:
