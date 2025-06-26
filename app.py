@@ -488,7 +488,7 @@ if st.session_state.comparison_set:
             costs = [c * st.session_state.quantity for c in valid_costs.values()]
             lowest = min(costs) if costs else 0
             average = sum(costs) / len(costs) if costs else 0
-            monthly_ savings = average - lowest
+            monthly_savings = average - lowest
             with summary_cols[0]: st.metric("Lowest Cost", f"${lowest:,.2f}")
             with summary_cols[1]: st.metric("Average Cost", f"${average:,.2f}")
             with summary_cols[2]: st.metric("Monthly Savings", f"${monthly_savings:,.2f}")
