@@ -18,8 +18,6 @@ def load_css():
         <style>
             .stApp { background-color: #FFFFFF; }
             h1, h3 { font-weight: 600; }
-
-            /* Card Styles */
             .card {
                 background-color: white; border-radius: 10px; padding: 20px;
                 box-shadow: 0 4px 8px 0 rgba(0,0,0,0.08); border: 1px solid #E0E0E0;
@@ -30,8 +28,6 @@ def load_css():
             .card-header { font-size: 1.5em; font-weight: bold; margin-bottom: 15px; color: #0052CC; }
             .recommended-badge { background-color: #28a745; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.8em; }
             .total-cost { font-size: 2em; font-weight: bold; color: #333; text-align: right; margin-top: 20px; }
-            
-            /* Savings Analysis Card */
             .savings-card {
                 background-color: white; border-radius: 10px; padding: 25px;
                 box-shadow: 0 4px 8px 0 rgba(0,0,0,0.08); border: 1px solid #E0E0E0;
@@ -44,8 +40,6 @@ def load_css():
             .metric-container { text-align: center; flex: 1; }
             .metric-value { font-size: 2.2em; font-weight: 600; color: #28a745; }
             .metric-label { font-size: 1em; color: #6c757d; }
-            
-            /* Bucket Expander */
             .st-expander { border: 1px solid #E0E0E0 !important; border-radius: 10px !important; }
         </style>
     """, unsafe_allow_html=True)
@@ -103,7 +97,6 @@ load_css()
 if 'bucket' not in st.session_state:
     st.session_state.bucket = []
 
-# --- Header ---
 st.title("Cross Examine")
 st.caption("Enforcing the Clarity Clause in Multi-Cloud Decision-Making")
 
@@ -138,7 +131,6 @@ with st.container(border=True):
             selected_key = st.selectbox("Instance", options=instance_options.keys(), format_func=lambda x: instance_options.get(x, x), key=f"instance_{selected_csp}_{service_type}")
         with col3:
             quantity = st.number_input("Quantity", min_value=1, value=1, key=f"qty_{selected_csp}_{service_type}")
-            # The button type is set to primary to use the theme color (blue, as set in config.toml)
             if st.button("Add to Bucket", type="primary", use_container_width=True, key=f"add_{selected_csp}_{service_type}"):
                 meter, region = selected_key.split('@')
                 equivalents = get_vm_comparison_from_row(df, selected_csp, meter, region, current_map)
@@ -194,7 +186,8 @@ if st.session_state.bucket:
             header_html = f'<div class="card-header">{cloud_names[cloud]}'
             if is_recommended: header_html += '<span class="recommended-badge">RECOMMENDED</span>'
             header_html += '</div>'
-            body_html = f"<div class='card-body'><div class='total-cost'>${total_costs[cloud]:,.2f}</div></div>"
+            # UPDATED: Total cost is now formatted to zero decimal places.
+            body_html = f"<div class='card-body'><div class='total-cost'>${total_costs[cloud]:,.0f}</div></div>"
             st.markdown(f'<div class="{card_class}">{header_html}{body_html}</div>', unsafe_allow_html=True)
 
     st.subheader("Cost Summary & Savings Analysis")
@@ -204,23 +197,24 @@ if st.session_state.bucket:
         monthly_savings = highest_cost - lowest_cost
         annual_savings = monthly_savings * 12
 
+        # UPDATED: All metrics are now formatted to zero decimal places.
         metrics_html = f"""
             <div class="savings-card">
                 <div class="metric-row">
                     <div class="metric-container">
-                        <div class="metric-value">${lowest_cost:,.2f}</div>
+                        <div class="metric-value">${lowest_cost:,.0f}</div>
                         <div class="metric-label">Lowest Cost</div>
                     </div>
                     <div class="metric-container">
-                        <div class="metric-value">${highest_cost:,.2f}</div>
+                        <div class="metric-value">${highest_cost:,.0f}</div>
                         <div class="metric-label">Highest Cost</div>
                     </div>
                     <div class="metric-container">
-                        <div class="metric-value">${monthly_savings:,.2f}</div>
+                        <div class="metric-value">${monthly_savings:,.0f}</div>
                         <div class="metric-label">Monthly Savings</div>
                     </div>
                     <div class="metric-container">
-                        <div class="metric-value">${annual_savings:,.2f}</div>
+                        <div class="metric-value">${annual_savings:,.0f}</div>
                         <div class="metric-label">Annual Savings</div>
                     </div>
                 </div>
