@@ -301,37 +301,39 @@ def parse_cost(cost_str):
 def load_and_process_data(ec2_csv_str, rds_csv_str, s3_csv_str):
     """
     Loads and normalizes the complete dataset from the embedded strings.
-    FIX: Uses Python's native `csv` module to robustly handle complex formats and
-    quoted fields containing commas, preventing parsing errors.
+    FIX: Uses pandas.read_csv which correctly handles complex CSV formats with
+    quoted fields, preventing parsing errors.
     """
     try:
-        ec2_data, rds_data, s3_data = [], [], []
-
         # --- Process EC2 Data ---
-        reader = csv.DictReader(StringIO(ec2_csv_str))
-        for row in reader:
+        ec2_df = pd.read_csv(StringIO(ec2_csv_str))
+        ec2_data = []
+        for _, row in ec2_df.iterrows():
             vcpu = int(float(row['vCPUs']))
             memory = parse_memory(row['Memory'])
-            if parse_cost(row['AWS Monthly Cost']) > 0:
+            
+            if pd.notna(row['AWS Monthly Cost']) and parse_cost(row['AWS Monthly Cost']) > 0:
                 ec2_data.append({'cloud': 'aws', 'region': row['Region'], 'meter': row['Instance Type'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['AWS Monthly Cost'])})
-            if parse_cost(row['Azure Monthly Cost']) > 0:
+            if pd.notna(row['Azure Monthly Cost']) and parse_cost(row['Azure Monthly Cost']) > 0:
                 ec2_data.append({'cloud': 'azure', 'region': row['AzureRegion'], 'meter': row['Azure Meter'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['Azure Monthly Cost'])})
-            if parse_cost(row['GCP Monthly Cost']) > 0 and row.get('GCP Region') != '#N/A':
+            if pd.notna(row.get('GCP Monthly Cost')) and row.get('GCP Region') != '#N/A' and parse_cost(row['GCP Monthly Cost']) > 0:
                 ec2_data.append({'cloud': 'gcp', 'region': row['GCP Region'], 'meter': row['GCP SKU'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['GCP Monthly Cost'])})
 
         # --- Process RDS Data ---
-        reader = csv.DictReader(StringIO(rds_csv_str))
-        for row in reader:
-            if parse_cost(row['AWS- On Demand Monthly Cost']) > 0:
+        rds_df = pd.read_csv(StringIO(rds_csv_str))
+        rds_data = []
+        for _, row in rds_df.iterrows():
+            if pd.notna(row['AWS- On Demand Monthly Cost']) and parse_cost(row['AWS- On Demand Monthly Cost']) > 0:
                 rds_data.append({'cloud': 'aws', 'meter': row['Meter'], 'region': row['Region'], 'vcpu': int(float(row['vCPUs'])), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['AWS- On Demand Monthly Cost'])})
-            if parse_cost(row['Azure Monthly Cost']) > 0:
+            if pd.notna(row['Azure Monthly Cost']) and parse_cost(row['Azure Monthly Cost']) > 0:
                 rds_data.append({'cloud': 'azure', 'meter': row['Meter.1'], 'region': row['AzureRegion'], 'vcpu': int(float(row['vCPUs'])), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['Azure Monthly Cost'])})
-            if pd.notna(row.get('GCP SKU')) and parse_cost(row.get('GCP Ondemand Cost/month')) > 0:
+            if pd.notna(row.get('GCP SKU')) and pd.notna(row.get('GCP Ondemand Cost/month')) and parse_cost(row.get('GCP Ondemand Cost/month')) > 0:
                  rds_data.append({'cloud': 'gcp', 'meter': row['GCP SKU'], 'region': row['GCP Region'], 'vcpu': int(float(row['vCPUs.1'])), 'memory': parse_memory(row['Memory.1']), 'cost': parse_cost(row['GCP Ondemand Cost/month'])})
 
         # --- Process S3 Data ---
-        reader = csv.DictReader(StringIO(s3_csv_str))
-        for row in reader:
+        s3_df = pd.read_csv(StringIO(s3_csv_str))
+        s3_data = []
+        for _, row in s3_df.iterrows():
             if parse_cost(row['AWS Ondemand Cost']) > 0:
                 s3_data.append({'cloud': 'aws', 'tier': row['Meter'], 'region': row['Region'], 'costPerGB': parse_cost(row['AWS Ondemand Cost'])})
             if parse_cost(row['Azure Ondemand Cost']) > 0:
@@ -348,6 +350,7 @@ def load_and_process_data(ec2_csv_str, rds_csv_str, s3_csv_str):
     except Exception as e:
         st.error(f"An error occurred while processing the data. Please check the data format. Error: {e}")
         return None
+
 
 # Load the data by calling the cached function
 RAW_DATA = load_and_process_data(EC2_DATA_STRING, RDS_DATA_STRING, S3_DATA_STRING)
