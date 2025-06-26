@@ -1,0 +1,18 @@
+# .streamlit/config.toml
+
+[theme]
+# This forces the app to always load in light mode for all users.
+base="light"
+
+# This sets the main color for widgets like buttons to blue.
+primaryColor="#0052CC"
+
+# These are the default colors for the light theme.
+backgroundColor="#FFFFFF"
+secondaryBackgroundColor="#F0F2F6"
+textColor="#31333F"
+font="sans serif"
+
+[server]
+# This line is optional, but it removes the hamburger menu for a cleaner look.
+headless = true
