@@ -7,7 +7,7 @@ from datetime import datetime
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Cross Examine",
-    page_icon="☁️",
+    page_icon="⚖️",
     layout="wide"
 )
 
@@ -100,7 +100,8 @@ if 'bucket' not in st.session_state:
 
 col1, col2 = st.columns([1, 4])
 with col1:
-    st.image("https://i.imgur.com/7D73sYp.png", width=150)
+    # Use your custom logo by providing its URL here.
+    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Motorola_Solutions_logo.svg/1024px-Motorola_Solutions_logo.svg.png", width=200)
 with col2:
     st.title("Cross Examine")
     st.caption("Enforcing the Clarity Clause in Multi-Cloud Decision-Making")
@@ -199,7 +200,6 @@ if st.session_state.bucket:
         monthly_savings = highest_cost - lowest_cost
         annual_savings = monthly_savings * 12
 
-        # Construct HTML for the metrics card to ensure they appear inside
         metrics_html = f"""
             <div class="savings-card">
                 <div class="metric-row">
