@@ -16,21 +16,11 @@ def load_css():
     """Injects custom CSS for the application's formal look."""
     st.markdown("""
         <style>
+            /* The .stApp background is now set in config.toml, but we can keep this as a fallback */
             .stApp { background-color: #FFFFFF; }
             h1, h3 { font-weight: 600; }
-            
-            /* --- Button Color Override --- */
-            button.st-button-primary {
-                background-color: #0052CC !important;
-                color: white !important;
-                border: 1px solid #0052CC !important;
-            }
-            button.st-button-primary:hover {
-                background-color: #0041A3 !important;
-                border: 1px solid #0041A3 !important;
-            }
 
-            /* --- Card Styles --- */
+            /* Card Styles - These remain as they are for component-specific styling */
             .card {
                 background-color: white; border-radius: 10px; padding: 20px;
                 box-shadow: 0 4px 8px 0 rgba(0,0,0,0.08); border: 1px solid #E0E0E0;
@@ -42,7 +32,7 @@ def load_css():
             .recommended-badge { background-color: #28a745; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.8em; }
             .total-cost { font-size: 2em; font-weight: bold; color: #333; text-align: right; margin-top: 20px; }
             
-            /* --- Savings Analysis Card --- */
+            /* Savings Analysis Card */
             .savings-card {
                 background-color: white; border-radius: 10px; padding: 25px;
                 box-shadow: 0 4px 8px 0 rgba(0,0,0,0.08); border: 1px solid #E0E0E0;
@@ -56,7 +46,7 @@ def load_css():
             .metric-value { font-size: 2.2em; font-weight: 600; color: #28a745; }
             .metric-label { font-size: 1em; color: #6c757d; }
             
-            /* --- Bucket Expander --- */
+            /* Bucket Expander */
             .st-expander { border: 1px solid #E0E0E0 !important; border-radius: 10px !important; }
         </style>
     """, unsafe_allow_html=True)
@@ -116,7 +106,8 @@ if 'bucket' not in st.session_state:
 
 col1, col2 = st.columns([1, 4])
 with col1:
-    st.image("https://i.imgur.com/7D73sYp.png", width=150)
+    # UPDATED: Using a stable URL for the Motorola Solutions logo.
+    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Motorola_Solutions_logo.svg/1024px-Motorola_Solutions_logo.svg.png", width=200)
 with col2:
     st.title("Cross Examine")
     st.caption("Enforcing the Clarity Clause in Multi-Cloud Decision-Making")
