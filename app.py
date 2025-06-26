@@ -491,3 +491,4 @@ if st.session_state.comparison_set:
             with summary_cols[1]: st.metric("Average Cost", f"${average:,.2f}")
             with summary_cols[2]: st.metric("Monthly Savings", f"${monthly_savings:,.2f}")
             with summary_cols[3]: st.metric("Annual Savings", f"${monthly_savings * 12:,.2f}")
+
