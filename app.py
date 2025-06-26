@@ -186,7 +186,6 @@ if st.session_state.bucket:
             header_html = f'<div class="card-header">{cloud_names[cloud]}'
             if is_recommended: header_html += '<span class="recommended-badge">RECOMMENDED</span>'
             header_html += '</div>'
-            # UPDATED: Total cost is now formatted to zero decimal places.
             body_html = f"<div class='card-body'><div class='total-cost'>${total_costs[cloud]:,.0f}</div></div>"
             st.markdown(f'<div class="{card_class}">{header_html}{body_html}</div>', unsafe_allow_html=True)
 
@@ -197,7 +196,6 @@ if st.session_state.bucket:
         monthly_savings = highest_cost - lowest_cost
         annual_savings = monthly_savings * 12
 
-        # UPDATED: All metrics are now formatted to zero decimal places.
         metrics_html = f"""
             <div class="savings-card">
                 <div class="metric-row">
