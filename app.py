@@ -296,24 +296,27 @@ def parse_cost(cost_str):
     return 0.0
 
 @st.cache_data(ttl="1h")
-def load_and_process_data(ec2_csv, rds_csv, s3_csv):
+def load_and_process_data(ec2_csv_str, rds_csv_str, s3_csv_str):
     """
-    Loads and normalizes the complete dataset from the embedded strings.
-    This function is cached by Streamlit for performance.
-    FIX: Uses pandas to correctly parse CSV data, handling commas in fields.
+    Loads and normalizes the complete dataset.
+    FIX: This function now parses each data string independently with its own logic,
+    which correctly handles the different file formats.
     """
     try:
         # --- Process EC2 Data ---
-        ec2_df = pd.read_csv(StringIO(ec2_csv))
+        ec2_df = pd.read_csv(StringIO(ec2_csv_str))
         ec2_data = []
         for _, row in ec2_df.iterrows():
-            ec2_data.append({'cloud': 'aws', 'region': row['Region'], 'meter': row['Instance Type'], 'vcpu': int(row['vCPUs']), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['AWS Monthly Cost'])})
-            ec2_data.append({'cloud': 'azure', 'region': row['AzureRegion'], 'meter': row['Azure Meter'], 'vcpu': int(row['vCPUs']), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['Azure Monthly Cost'])})
+            vcpu = int(row['vCPUs'])
+            memory = parse_memory(row['Memory'])
+            
+            ec2_data.append({'cloud': 'aws', 'region': row['Region'], 'meter': row['Instance Type'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['AWS Monthly Cost'])})
+            ec2_data.append({'cloud': 'azure', 'region': row['AzureRegion'], 'meter': row['Azure Meter'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['Azure Monthly Cost'])})
             if pd.notna(row.get('GCP SKU')) and row.get('GCP Region') != '#N/A':
-                ec2_data.append({'cloud': 'gcp', 'region': row['GCP Region'], 'meter': row['GCP SKU'], 'vcpu': int(row['vCPUs']), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['GCP Monthly Cost'])})
+                ec2_data.append({'cloud': 'gcp', 'region': row['GCP Region'], 'meter': row['GCP SKU'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['GCP Monthly Cost'])})
 
         # --- Process RDS Data ---
-        rds_df = pd.read_csv(StringIO(rds_csv))
+        rds_df = pd.read_csv(StringIO(rds_csv_str))
         rds_data = []
         for _, row in rds_df.iterrows():
             rds_data.append({'cloud': 'aws', 'meter': row['Meter'], 'region': row['Region'], 'vcpu': int(row['vCPUs']), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['AWS- On Demand Monthly Cost'])})
@@ -322,7 +325,7 @@ def load_and_process_data(ec2_csv, rds_csv, s3_csv):
                  rds_data.append({'cloud': 'gcp', 'meter': row['GCP SKU'], 'region': row['GCP Region'], 'vcpu': int(row['vCPUs.1']), 'memory': parse_memory(row['Memory.1']), 'cost': parse_cost(row['GCP Ondemand Cost/month'])})
 
         # --- Process S3 Data ---
-        s3_df = pd.read_csv(StringIO(s3_csv))
+        s3_df = pd.read_csv(StringIO(s3_csv_str))
         s3_data = []
         for _, row in s3_df.iterrows():
             s3_data.append({'cloud': 'aws', 'tier': row['Meter'], 'region': row['Region'], 'costPerGB': parse_cost(row['AWS Ondemand Cost'])})
@@ -339,7 +342,6 @@ def load_and_process_data(ec2_csv, rds_csv, s3_csv):
         st.error(f"An error occurred while processing the data. Please check the data format. Error: {e}")
         return None
 
-
 # Load the data by calling the cached function
 RAW_DATA = load_and_process_data(EC2_DATA_STRING, RDS_DATA_STRING, S3_DATA_STRING)
 
@@ -348,16 +350,18 @@ def find_equivalent(primary_instance, service_type):
     if not primary_instance or not RAW_DATA: return {}
     data = RAW_DATA[service_type]
     aws_equiv = next((i for i in data if i['cloud'] == 'aws' and i.get('vcpu') == primary_instance.get('vcpu') and i.get('memory') == primary_instance.get('memory')), None)
-    azure_equiv = next((i for i in data if i['cloud'] == 'azure' and i.get('vcpu') == primary_instance.get('vcpu')), None)
+    azure_equiv = next((i for i in data if i['cloud'] == 'azure' and i.get('vcpu') == primary_instance.get('vcpu')), None) # Simplified Azure matching
     gcp_equiv = next((i for i in data if i['cloud'] == 'gcp' and i.get('vcpu') == primary_instance.get('vcpu') and i.get('memory') == primary_instance.get('memory')), None)
     return {'aws': aws_equiv, 'azure': azure_equiv, 'gcp': gcp_equiv}
 
 def get_s3_equivalents(primary_tier, storage_gb):
     if not RAW_DATA: return {}
     equivalents = {}
-    aws_tier = next((t for t in RAW_DATA['s3'] if t['cloud'] == 'aws' and t['tier'] == primary_tier), None)
-    azure_tier = next((t for t in RAW_DATA['s3'] if t['cloud'] == 'azure' and primary_tier.split(' ')[0] in t['tier']), None)
-    gcp_tier = next((t for t in RAW_DATA['s3'] if t['cloud'] == 'gcp' and primary_tier.split(' ')[0] in t['tier']), None)
+    
+    aws_tier = next((t for t in RAW_DATA['s3'] if t['cloud'] == 'aws' and t.get('tier') == primary_tier), None)
+    # Match S3 tiers more loosely (e.g., 'Standard' matches 'Blob Storage- Hot')
+    azure_tier = next((t for t in RAW_DATA['s3'] if t['cloud'] == 'azure' and primary_tier.split(' ')[0] in t.get('tier', '')), None)
+    gcp_tier = next((t for t in RAW_DATA['s3'] if t['cloud'] == 'gcp' and primary_tier.split(' ')[0] in t.get('tier', '')), None)
 
     if aws_tier: equivalents['aws'] = {**aws_tier, 'cost': aws_tier['costPerGB'] * storage_gb}
     if azure_tier: equivalents['azure'] = {**azure_tier, 'cost': azure_tier['costPerGB'] * storage_gb}
@@ -369,7 +373,7 @@ st.title("☁️ Multi-Cloud Cost Calculator")
 st.write("Compare costs for equivalent services across AWS, Azure, and GCP.")
 
 if not RAW_DATA:
-    st.error("Data could not be loaded. The application cannot continue.")
+    st.error("Data could not be loaded. Please check that the data strings are pasted correctly.")
     st.stop()
 
 if 'comparison_set' not in st.session_state:
@@ -426,10 +430,10 @@ if st.session_state.comparison_set:
                 table_data[cloud.upper()] = [
                     cloud_data.get('meter', 'N/A'),
                     cloud_data.get('vcpu', 'N/A'),
-                    cloud_data.get('memory', 'N/A'),
+                    f"{cloud_data.get('memory', 'N/A')} GiB",
                     cloud_data.get('region', 'N/A')
                 ]
-        else:
+        else: # S3
             specs = ['Storage Tier', 'Region']
             table_data = {'Specification': specs}
             for cloud in ['azure', 'aws', 'gcp']:
