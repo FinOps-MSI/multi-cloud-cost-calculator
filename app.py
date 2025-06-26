@@ -7,7 +7,7 @@ from datetime import datetime
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Cross Examine",
-    page_icon="☁️",
+    page_icon="⚖️",
     layout="wide"
 )
 
@@ -16,11 +16,10 @@ def load_css():
     """Injects custom CSS for the application's formal look."""
     st.markdown("""
         <style>
-            /* The .stApp background is now set in config.toml, but we can keep this as a fallback */
             .stApp { background-color: #FFFFFF; }
             h1, h3 { font-weight: 600; }
 
-            /* Card Styles - These remain as they are for component-specific styling */
+            /* Card Styles */
             .card {
                 background-color: white; border-radius: 10px; padding: 20px;
                 box-shadow: 0 4px 8px 0 rgba(0,0,0,0.08); border: 1px solid #E0E0E0;
@@ -104,13 +103,9 @@ load_css()
 if 'bucket' not in st.session_state:
     st.session_state.bucket = []
 
-col1, col2 = st.columns([1, 4])
-with col1:
-    # UPDATED: Using a stable URL for the Motorola Solutions logo.
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Motorola_Solutions_logo.svg/1024px-Motorola_Solutions_logo.svg.png", width=200)
-with col2:
-    st.title("Cross Examine")
-    st.caption("Enforcing the Clarity Clause in Multi-Cloud Decision-Making")
+# --- Header ---
+st.title("Cross Examine")
+st.caption("Enforcing the Clarity Clause in Multi-Cloud Decision-Making")
 
 RAW_DFS = {'Compute': load_data(GOOGLE_SHEET_URL_EC2), 'Database': load_data(GOOGLE_SHEET_URL_RDS), 'Storage': load_data(GOOGLE_SHEET_URL_S3)}
 
@@ -143,6 +138,7 @@ with st.container(border=True):
             selected_key = st.selectbox("Instance", options=instance_options.keys(), format_func=lambda x: instance_options.get(x, x), key=f"instance_{selected_csp}_{service_type}")
         with col3:
             quantity = st.number_input("Quantity", min_value=1, value=1, key=f"qty_{selected_csp}_{service_type}")
+            # The button type is set to primary to use the theme color (blue, as set in config.toml)
             if st.button("Add to Bucket", type="primary", use_container_width=True, key=f"add_{selected_csp}_{service_type}"):
                 meter, region = selected_key.split('@')
                 equivalents = get_vm_comparison_from_row(df, selected_csp, meter, region, current_map)
