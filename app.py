@@ -299,67 +299,53 @@ def parse_cost(cost_str):
 def load_and_process_data(ec2_csv_str, rds_csv_str, s3_csv_str):
     """
     Loads and normalizes the complete dataset from the embedded strings.
-    FIX: Uses a robust manual parser for each service to handle different column structures
-    and data formats correctly, avoiding CSV tokenization errors.
+    FIX: Uses pandas.read_csv which correctly handles complex CSV formats with
+    quoted fields, preventing parsing errors.
     """
     try:
         # --- Process EC2 Data ---
+        ec2_df = pd.read_csv(StringIO(ec2_csv_str))
         ec2_data = []
-        for line in ec2_csv_str.strip().splitlines()[1:]: # Skip header
-            fields = line.split(',')
-            if len(fields) < 18: continue
+        for _, row in ec2_df.iterrows():
+            vcpu = int(float(row['vCPUs']))
+            memory = parse_memory(row['Memory'])
             
-            aws_monthly_cost = parse_cost(fields[13])
-            azure_monthly_cost = parse_cost(fields[15])
-            gcp_monthly_cost = parse_cost(fields[17])
-            
-            vcpu = int(fields[4])
-            memory = parse_memory(fields[5])
-
-            if aws_monthly_cost > 0:
-                ec2_data.append({'cloud': 'aws', 'region': fields[0], 'meter': fields[2], 'vcpu': vcpu, 'memory': memory, 'cost': aws_monthly_cost})
-            if azure_monthly_cost > 0:
-                ec2_data.append({'cloud': 'azure', 'region': fields[8], 'meter': fields[7], 'vcpu': vcpu, 'memory': memory, 'cost': azure_monthly_cost})
-            if gcp_monthly_cost > 0 and fields[11] != '#N/A':
-                ec2_data.append({'cloud': 'gcp', 'region': fields[11], 'meter': fields[10], 'vcpu': vcpu, 'memory': memory, 'cost': gcp_monthly_cost})
+            if pd.notna(row['AWS Monthly Cost']):
+                ec2_data.append({'cloud': 'aws', 'region': row['Region'], 'meter': row['Instance Type'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['AWS Monthly Cost'])})
+            if pd.notna(row['Azure Monthly Cost']):
+                ec2_data.append({'cloud': 'azure', 'region': row['AzureRegion'], 'meter': row['Azure Meter'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['Azure Monthly Cost'])})
+            if pd.notna(row.get('GCP Monthly Cost')) and row.get('GCP Region') != '#N/A':
+                ec2_data.append({'cloud': 'gcp', 'region': row['GCP Region'], 'meter': row['GCP SKU'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['GCP Monthly Cost'])})
 
         # --- Process RDS Data ---
+        rds_df = pd.read_csv(StringIO(rds_csv_str))
         rds_data = []
-        for line in rds_csv_str.strip().splitlines()[1:]:
-            fields = line.split(',')
-            if len(fields) < 28: continue
-            
-            aws_cost = parse_cost(fields[15])
-            azure_cost = parse_cost(fields[17])
-            gcp_cost = parse_cost(fields[27])
+        for _, row in rds_df.iterrows():
+            if pd.notna(row['AWS- On Demand Monthly Cost']):
+                rds_data.append({'cloud': 'aws', 'meter': row['Meter'], 'region': row['Region'], 'vcpu': int(float(row['vCPUs'])), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['AWS- On Demand Monthly Cost'])})
+            if pd.notna(row['Azure Monthly Cost']):
+                rds_data.append({'cloud': 'azure', 'meter': row['Meter.1'], 'region': row['AzureRegion'], 'vcpu': int(float(row['vCPUs'])), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['Azure Monthly Cost'])})
+            if pd.notna(row.get('GCP SKU')) and pd.notna(row.get('GCP Ondemand Cost/month')):
+                 rds_data.append({'cloud': 'gcp', 'meter': row['GCP SKU'], 'region': row['GCP Region'], 'vcpu': int(float(row['vCPUs.1'])), 'memory': parse_memory(row['Memory.1']), 'cost': parse_cost(row['GCP Ondemand Cost/month'])})
 
-            if aws_cost > 0:
-                rds_data.append({'cloud': 'aws', 'meter': fields[2], 'region': fields[4], 'vcpu': int(fields[6]), 'memory': parse_memory(fields[7]), 'cost': aws_cost})
-            if azure_cost > 0:
-                 # Manually reconstruct Azure meter name that might contain commas
-                azure_meter = fields[11].replace('"', '') + ("," + fields[12].replace('"', '') if 'vCore"' not in fields[11] else '')
-                rds_data.append({'cloud': 'azure', 'meter': azure_meter, 'region': fields[13], 'vcpu': int(fields[6]), 'memory': parse_memory(fields[7]), 'cost': azure_cost})
-            if gcp_cost > 0 and pd.notna(fields[21]):
-                 rds_data.append({'cloud': 'gcp', 'meter': fields[21], 'region': fields[22], 'vcpu': int(fields[24]), 'memory': parse_memory(fields[25]), 'cost': gcp_cost})
-        
         # --- Process S3 Data ---
+        s3_df = pd.read_csv(StringIO(s3_csv_str))
         s3_data = []
-        for line in s3_csv_str.strip().splitlines()[1:]:
-            fields = line.split(',')
-            if len(fields) < 15: continue
-            s3_data.append({'cloud': 'aws', 'tier': fields[2], 'region': fields[3], 'costPerGB': parse_cost(fields[5])})
-            s3_data.append({'cloud': 'azure', 'tier': fields[7], 'region': fields[8], 'costPerGB': parse_cost(fields[9])})
-            s3_data.append({'cloud': 'gcp', 'tier': fields[12], 'region': fields[13], 'costPerGB': parse_cost(fields[14])})
+        for _, row in s3_df.iterrows():
+            s3_data.append({'cloud': 'aws', 'tier': row['Meter'], 'region': row['Region'], 'costPerGB': parse_cost(row['AWS Ondemand Cost'])})
+            s3_data.append({'cloud': 'azure', 'tier': row['Meter.1'], 'region': row['Region.1'], 'costPerGB': parse_cost(row['Azure Ondemand Cost'])})
+            s3_data.append({'cloud': 'gcp', 'tier': row['Meter.2'], 'region': row['Region.2'], 'costPerGB': parse_cost(row['GCP Ondemand Cost'])})
         
-        # Remove duplicates
-        processed_ec2 = [dict(t) for t in {tuple(d.items()) for d in ec2_data}]
-        processed_rds = [dict(t) for t in {tuple(d.items()) for d in rds_data}]
-        processed_s3 = [dict(t) for t in {tuple(d.items()) for d in s3_data}]
+        # Remove duplicates and clean up
+        processed_ec2 = [dict(t) for t in {tuple(d.items()) for d in ec2_data if d.get('cost', 0) > 0}]
+        processed_rds = [dict(t) for t in {tuple(d.items()) for d in rds_data if d.get('cost', 0) > 0}]
+        processed_s3 = [dict(t) for t in {tuple(d.items()) for d in s3_data if d.get('costPerGB', 0) > 0}]
 
         return {'ec2': processed_ec2, 'rds': processed_rds, 's3': processed_s3}
     except Exception as e:
         st.error(f"An error occurred while processing the data. Please check the data format. Error: {e}")
         return None
+
 
 # Load the data by calling the cached function
 RAW_DATA = load_and_process_data(EC2_DATA_STRING, RDS_DATA_STRING, S3_DATA_STRING)
@@ -385,6 +371,7 @@ def get_s3_equivalents(primary_tier, storage_gb):
     equivalents = {}
     
     aws_tier = next((t for t in RAW_DATA['s3'] if t['cloud'] == 'aws' and t.get('tier') == primary_tier), None)
+    # Match S3 tiers more loosely (e.g., 'Standard' matches 'Blob Storage- Hot')
     azure_tier = next((t for t in RAW_DATA['s3'] if t['cloud'] == 'azure' and primary_tier.split(' ')[0] in t.get('tier', '')), None)
     gcp_tier = next((t for t in RAW_DATA['s3'] if t['cloud'] == 'gcp' and primary_tier.split(' ')[0] in t.get('tier', '')), None)
 
