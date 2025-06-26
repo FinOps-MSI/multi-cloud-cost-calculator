@@ -7,7 +7,7 @@ from datetime import datetime
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Cross Examine",
-    page_icon="⚖️",
+    page_icon="🧺",
     layout="wide"
 )
 
@@ -96,11 +96,11 @@ if 'bucket' not in st.session_state:
 # --- Header with Logo ---
 col1, col2 = st.columns([1, 4])
 with col1:
-    # Replace with your actual logo's URL or a local file path
-    st.image("https://i.imgur.com/7D73sYp.png", width=150) # Neutral logo
+    # Use a placeholder for the logo URL. Replace with your actual logo's URL.
+    st.image("https://i.imgur.com/v1n6g0h.png", width=150)
 with col2:
-    st.title("Cross Examine")
-    st.caption("Enforcing the Clarity Clause in Multi-Cloud Decision-Making")
+    st.title("Multi-Cloud Cost Comparison")
+    st.write("Build a bucket of resources to compare total costs across AWS, Azure, and GCP.")
 
 # Load all data sources
 RAW_DFS = {'Compute': load_data(GOOGLE_SHEET_URL_EC2), 'Database': load_data(GOOGLE_SHEET_URL_RDS), 'Storage': load_data(GOOGLE_SHEET_URL_S3)}
@@ -216,7 +216,7 @@ if st.session_state.bucket:
             with metric_cols[2]: st.markdown(f'<div class="metric-container"><div class="metric-value">${monthly_savings:,.2f}</div><div class="metric-label">Monthly Savings</div></div>', unsafe_allow_html=True)
             with metric_cols[3]: st.markdown(f'<div class="metric-container"><div class="metric-value">${annual_savings:,.2f}</div><div class="metric-label">Annual Savings</div></div>', unsafe_allow_html=True)
         else:
-            st.info("Add at least two cloud options to the bucket to see a savings analysis.")
+            st.info("Add at least two items to the bucket to see a savings analysis.")
         st.markdown('</div>', unsafe_allow_html=True)
 else:
     st.info("Your bucket is empty. Add a resource above to begin your cost comparison.")
