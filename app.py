@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import re
 from io import StringIO
+import csv
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -9,6 +10,7 @@ st.set_page_config(
     page_icon="☁️",
     layout="wide"
 )
+
 # --- Full, Embedded Pricing Data ---
 # Data is stored in CSV format in multiline strings and parsed by pandas.
 # This ensures every single row you provided is included.
@@ -299,53 +301,53 @@ def parse_cost(cost_str):
 def load_and_process_data(ec2_csv_str, rds_csv_str, s3_csv_str):
     """
     Loads and normalizes the complete dataset from the embedded strings.
-    FIX: Uses pandas.read_csv which correctly handles complex CSV formats with
-    quoted fields, preventing parsing errors.
+    FIX: Uses Python's native `csv` module to robustly handle complex formats and
+    quoted fields containing commas, preventing parsing errors.
     """
     try:
+        ec2_data, rds_data, s3_data = [], [], []
+
         # --- Process EC2 Data ---
-        ec2_df = pd.read_csv(StringIO(ec2_csv_str))
-        ec2_data = []
-        for _, row in ec2_df.iterrows():
+        reader = csv.DictReader(StringIO(ec2_csv_str))
+        for row in reader:
             vcpu = int(float(row['vCPUs']))
             memory = parse_memory(row['Memory'])
-            
-            if pd.notna(row['AWS Monthly Cost']):
+            if parse_cost(row['AWS Monthly Cost']) > 0:
                 ec2_data.append({'cloud': 'aws', 'region': row['Region'], 'meter': row['Instance Type'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['AWS Monthly Cost'])})
-            if pd.notna(row['Azure Monthly Cost']):
+            if parse_cost(row['Azure Monthly Cost']) > 0:
                 ec2_data.append({'cloud': 'azure', 'region': row['AzureRegion'], 'meter': row['Azure Meter'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['Azure Monthly Cost'])})
-            if pd.notna(row.get('GCP Monthly Cost')) and row.get('GCP Region') != '#N/A':
+            if parse_cost(row['GCP Monthly Cost']) > 0 and row.get('GCP Region') != '#N/A':
                 ec2_data.append({'cloud': 'gcp', 'region': row['GCP Region'], 'meter': row['GCP SKU'], 'vcpu': vcpu, 'memory': memory, 'cost': parse_cost(row['GCP Monthly Cost'])})
 
         # --- Process RDS Data ---
-        rds_df = pd.read_csv(StringIO(rds_csv_str))
-        rds_data = []
-        for _, row in rds_df.iterrows():
-            if pd.notna(row['AWS- On Demand Monthly Cost']):
+        reader = csv.DictReader(StringIO(rds_csv_str))
+        for row in reader:
+            if parse_cost(row['AWS- On Demand Monthly Cost']) > 0:
                 rds_data.append({'cloud': 'aws', 'meter': row['Meter'], 'region': row['Region'], 'vcpu': int(float(row['vCPUs'])), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['AWS- On Demand Monthly Cost'])})
-            if pd.notna(row['Azure Monthly Cost']):
+            if parse_cost(row['Azure Monthly Cost']) > 0:
                 rds_data.append({'cloud': 'azure', 'meter': row['Meter.1'], 'region': row['AzureRegion'], 'vcpu': int(float(row['vCPUs'])), 'memory': parse_memory(row['Memory']), 'cost': parse_cost(row['Azure Monthly Cost'])})
-            if pd.notna(row.get('GCP SKU')) and pd.notna(row.get('GCP Ondemand Cost/month')):
+            if pd.notna(row.get('GCP SKU')) and parse_cost(row.get('GCP Ondemand Cost/month')) > 0:
                  rds_data.append({'cloud': 'gcp', 'meter': row['GCP SKU'], 'region': row['GCP Region'], 'vcpu': int(float(row['vCPUs.1'])), 'memory': parse_memory(row['Memory.1']), 'cost': parse_cost(row['GCP Ondemand Cost/month'])})
 
         # --- Process S3 Data ---
-        s3_df = pd.read_csv(StringIO(s3_csv_str))
-        s3_data = []
-        for _, row in s3_df.iterrows():
-            s3_data.append({'cloud': 'aws', 'tier': row['Meter'], 'region': row['Region'], 'costPerGB': parse_cost(row['AWS Ondemand Cost'])})
-            s3_data.append({'cloud': 'azure', 'tier': row['Meter.1'], 'region': row['Region.1'], 'costPerGB': parse_cost(row['Azure Ondemand Cost'])})
-            s3_data.append({'cloud': 'gcp', 'tier': row['Meter.2'], 'region': row['Region.2'], 'costPerGB': parse_cost(row['GCP Ondemand Cost'])})
+        reader = csv.DictReader(StringIO(s3_csv_str))
+        for row in reader:
+            if parse_cost(row['AWS Ondemand Cost']) > 0:
+                s3_data.append({'cloud': 'aws', 'tier': row['Meter'], 'region': row['Region'], 'costPerGB': parse_cost(row['AWS Ondemand Cost'])})
+            if parse_cost(row['Azure Ondemand Cost']) > 0:
+                s3_data.append({'cloud': 'azure', 'tier': row['Meter.1'], 'region': row['Region.1'], 'costPerGB': parse_cost(row['Azure Ondemand Cost'])})
+            if parse_cost(row['GCP Ondemand Cost']) > 0:
+                s3_data.append({'cloud': 'gcp', 'tier': row['Meter.2'], 'region': row['Region.2'], 'costPerGB': parse_cost(row['GCP Ondemand Cost'])})
         
-        # Remove duplicates and clean up
-        processed_ec2 = [dict(t) for t in {tuple(d.items()) for d in ec2_data if d.get('cost', 0) > 0}]
-        processed_rds = [dict(t) for t in {tuple(d.items()) for d in rds_data if d.get('cost', 0) > 0}]
-        processed_s3 = [dict(t) for t in {tuple(d.items()) for d in s3_data if d.get('costPerGB', 0) > 0}]
+        # Remove duplicates
+        processed_ec2 = [dict(t) for t in {tuple(d.items()) for d in ec2_data}]
+        processed_rds = [dict(t) for t in {tuple(d.items()) for d in rds_data}]
+        processed_s3 = [dict(t) for t in {tuple(d.items()) for d in s3_data}]
 
         return {'ec2': processed_ec2, 'rds': processed_rds, 's3': processed_s3}
     except Exception as e:
         st.error(f"An error occurred while processing the data. Please check the data format. Error: {e}")
         return None
-
 
 # Load the data by calling the cached function
 RAW_DATA = load_and_process_data(EC2_DATA_STRING, RDS_DATA_STRING, S3_DATA_STRING)
@@ -486,9 +488,8 @@ if st.session_state.comparison_set:
             costs = [c * st.session_state.quantity for c in valid_costs.values()]
             lowest = min(costs) if costs else 0
             average = sum(costs) / len(costs) if costs else 0
-            monthly_savings = average - lowest
+            monthly_ savings = average - lowest
             with summary_cols[0]: st.metric("Lowest Cost", f"${lowest:,.2f}")
             with summary_cols[1]: st.metric("Average Cost", f"${average:,.2f}")
             with summary_cols[2]: st.metric("Monthly Savings", f"${monthly_savings:,.2f}")
             with summary_cols[3]: st.metric("Annual Savings", f"${monthly_savings * 12:,.2f}")
-
