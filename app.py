@@ -7,7 +7,7 @@ from datetime import datetime
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Cross Examine",
-    page_icon="🧺",
+    page_icon="☁️",
     layout="wide"
 )
 
@@ -29,17 +29,23 @@ def load_css():
             .recommended-badge { background-color: #28a745; color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.8em; }
             .cost-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.95em; }
             .total-cost { font-size: 2em; font-weight: bold; color: #333; text-align: right; margin-top: 20px; }
-            .savings-card { background-color: white; border-radius: 10px; padding: 25px; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.08); border: 1px solid #E0E0E0; }
-            .metric-container { text-align: center; }
+            .savings-card {
+                background-color: white; border-radius: 10px; padding: 25px;
+                box-shadow: 0 4px 8px 0 rgba(0,0,0,0.08); border: 1px solid #E0E0E0;
+            }
+            .metric-row {
+                display: flex;
+                justify-content: space-around;
+                align-items: center;
+            }
+            .metric-container { text-align: center; flex: 1; }
             .metric-value { font-size: 2.2em; font-weight: 600; color: #28a745; }
             .metric-label { font-size: 1em; color: #6c757d; }
-            /* Styling for the bucket */
             .st-expander { border: 1px solid #E0E0E0 !important; border-radius: 10px !important; }
         </style>
     """, unsafe_allow_html=True)
 
-# --- Data Loading and Processing (Functions from previous steps) ---
-# URLs for all three services
+# --- Data Loading and Processing ---
 GOOGLE_SHEET_URL_EC2 = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6nm8tGltr086h1MhnosWrIbP3wJiLEIlEK4ykpvaBhQ7YMzC3X7CNA6MeRKH7WUxHIeDCpASTdYnZ/pub?gid=0&single=true&output=csv"
 GOOGLE_SHEET_URL_RDS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6nm8tGltr086h1MhnosWrIbP3wJiLEIlEK4ykpvaBhQ7YMzC3X7CNA6MeRKH7WUxHIeDCpASTdYnZ/pub?gid=1524734883&single=true&output=csv"
 GOOGLE_SHEET_URL_S3 = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6nm8tGltr086h1MhnosWrIbP3wJiLEIlEK4ykpvaBhQ7YMzC3X7CNA6MeRKH7WUxHIeDCpASTdYnZ/pub?gid=1926651960&single=true&output=csv"
@@ -89,37 +95,32 @@ def get_storage_comparison(df, primary_cloud, primary_tier):
 # --- Main Application ---
 load_css()
 
-# --- Session State Initialization ---
 if 'bucket' not in st.session_state:
     st.session_state.bucket = []
 
-# --- Header with Logo ---
 col1, col2 = st.columns([1, 4])
 with col1:
-    # Use a placeholder for the logo URL. Replace with your actual logo's URL.
-    st.image("https://i.imgur.com/v1n6g0h.png", width=150)
+    st.image("https://i.imgur.com/7D73sYp.png", width=150)
 with col2:
-    st.title("Multi-Cloud Cost Comparison")
-    st.write("Build a bucket of resources to compare total costs across AWS, Azure, and GCP.")
+    st.title("Cross Examine")
+    st.caption("Enforcing the Clarity Clause in Multi-Cloud Decision-Making")
 
-# Load all data sources
 RAW_DFS = {'Compute': load_data(GOOGLE_SHEET_URL_EC2), 'Database': load_data(GOOGLE_SHEET_URL_RDS), 'Storage': load_data(GOOGLE_SHEET_URL_S3)}
 
-# --- Input Configuration Area ---
 with st.container(border=True):
     st.subheader("1. Add a Resource to Your Bucket")
     col1, col2, col3 = st.columns([1, 2, 1])
+    
     with col1:
+        csp_map = {'AWS': 'aws', 'Azure': 'azure', 'GCP': 'gcp'}
+        selected_csp = csp_map[st.selectbox("Cloud Provider", csp_map.keys())]
         service_type = st.selectbox("Service Type", RAW_DFS.keys())
+    
     with col2:
         df = RAW_DFS[service_type]
         if df is None:
             st.error(f"Data for {service_type} could not be loaded."); st.stop()
         
-        csp_map = {'AWS': 'aws', 'Azure': 'azure', 'GCP': 'gcp'}
-        selected_csp = csp_map[st.selectbox("Cloud Provider", csp_map.keys(), key=f"csp_{service_type}")]
-    
-    # --- Dynamic UI based on Service Type ---
     if service_type in ['Compute', 'Database']:
         col_maps = {
             'Compute': {'aws': {'meter': 'Instance Type', 'region': 'Region', 'cost': 'AWS Monthly Cost'}, 'azure': {'meter': 'Azure Meter', 'region': 'AzureRegion', 'cost': 'Azure Monthly Cost'}, 'gcp': {'meter': 'GCP SKU', 'region': 'GCP Region', 'cost': 'GCP Monthly Cost', 'vcpu': 'vCPUs', 'memory': 'Memory'}, 'shared': {'vcpu': 'vCPUs', 'memory': 'Memory'}},
@@ -133,7 +134,6 @@ with st.container(border=True):
             selected_key = st.selectbox("Instance", options=instance_options.keys(), format_func=lambda x: instance_options.get(x, x), key=f"instance_{service_type}")
         with col3:
             quantity = st.number_input("Quantity", min_value=1, value=1, key=f"qty_{service_type}")
-
             if st.button("Add to Bucket", type="primary", use_container_width=True):
                 meter, region = selected_key.split('@')
                 equivalents = get_vm_comparison_from_row(df, selected_csp, meter, region, current_map)
@@ -144,24 +144,19 @@ with st.container(border=True):
     elif service_type == 'Storage':
         tier_col_map = {'aws': 'Meter', 'azure': 'Meter.1', 'gcp': 'Meter.2'}
         tier_col = tier_col_map[selected_csp]
-        
         filtered_df = df.dropna(subset=[tier_col])
         with col2:
             selected_tier = st.selectbox("Storage Tier", options=filtered_df[tier_col].unique(), key=f"tier_{service_type}")
         with col3:
             storage_gb = st.number_input("Storage (GB)", min_value=1, value=1000, key=f"gb_{service_type}")
-
             if st.button("Add to Bucket", type="primary", use_container_width=True):
                 equivalents = get_storage_comparison(df, selected_csp, selected_tier)
                 if equivalents:
                     st.session_state.bucket.append({"id": str(uuid.uuid4()), "service_type": service_type, "description": f"{storage_gb} GB of {selected_tier}", "equivalents": equivalents, "storage_gb": storage_gb})
                     st.success(f"Added {selected_tier} to bucket!")
 
-# --- Bucket Display and Results Area ---
 if st.session_state.bucket:
     st.divider()
-    
-    # --- Display Current Bucket ---
     st.subheader("Your Bucket")
     for i, item in enumerate(st.session_state.bucket):
         with st.expander(f"**{item['service_type']}:** {item['description']}"):
@@ -170,25 +165,21 @@ if st.session_state.bucket:
                 for cloud, data in item['equivalents'].items(): tech_data.append({"Cloud": cloud.upper(), "Instance": data['meter'], "vCPUs": data['vcpu'], "Memory (GiB)": data['memory'], "Region": data['region']})
             else:
                 for cloud, data in item['equivalents'].items(): tech_data.append({"Cloud": cloud.upper(), "Tier": data['tier'], "Cost/GB": f"${data['cost_per_gb']:.5f}", "Region": data['region']})
-            
             st.dataframe(pd.DataFrame(tech_data).set_index("Cloud"), use_container_width=True)
             if st.button("Remove", key=f"remove_{item['id']}", type="secondary"):
                 st.session_state.bucket.pop(i)
                 st.rerun()
 
-    # --- Aggregate Cost Calculation ---
     total_costs = {'aws': 0, 'azure': 0, 'gcp': 0}
     for item in st.session_state.bucket:
         for cloud, data in item['equivalents'].items():
             if item['service_type'] in ['Compute', 'Database']:
                 total_costs[cloud] += data.get('cost', 0) * item.get('quantity', 1)
-            else: # Storage
+            else:
                 total_costs[cloud] += data.get('cost_per_gb', 0) * item.get('storage_gb', 0)
     
-    # --- Aggregate Cost Comparison Cards ---
     st.subheader("Total Bucket Cost Comparison")
     lowest_cost = min((cost for cost in total_costs.values() if cost > 0), default=0)
-    
     card_cols = st.columns(3)
     cloud_names = {'aws': 'Amazon AWS', 'azure': 'Microsoft Azure', 'gcp': 'Google Cloud'}
     for i, cloud in enumerate(['aws', 'azure', 'gcp']):
@@ -201,22 +192,39 @@ if st.session_state.bucket:
             body_html = f"<div class='card-body'><div class='total-cost'>${total_costs[cloud]:,.2f}</div></div>"
             st.markdown(f'<div class="{card_class}">{header_html}{body_html}</div>', unsafe_allow_html=True)
 
-    # --- Savings Analysis ---
     st.subheader("Cost Summary & Savings Analysis")
-    with st.container():
-        st.markdown('<div class="savings-card">', unsafe_allow_html=True)
-        metric_cols = st.columns(4)
-        valid_costs = [cost for cost in total_costs.values() if cost > 0]
-        if len(valid_costs) > 1:
-            average_cost = sum(valid_costs) / len(valid_costs)
-            monthly_savings = average_cost - lowest_cost
-            annual_savings = monthly_savings * 12
-            with metric_cols[0]: st.markdown(f'<div class="metric-container"><div class="metric-value">${lowest_cost:,.2f}</div><div class="metric-label">Lowest Cost</div></div>', unsafe_allow_html=True)
-            with metric_cols[1]: st.markdown(f'<div class="metric-container"><div class="metric-value">${average_cost:,.2f}</div><div class="metric-label">Average Cost</div></div>', unsafe_allow_html=True)
-            with metric_cols[2]: st.markdown(f'<div class="metric-container"><div class="metric-value">${monthly_savings:,.2f}</div><div class="metric-label">Monthly Savings</div></div>', unsafe_allow_html=True)
-            with metric_cols[3]: st.markdown(f'<div class="metric-container"><div class="metric-value">${annual_savings:,.2f}</div><div class="metric-label">Annual Savings</div></div>', unsafe_allow_html=True)
-        else:
-            st.info("Add at least two items to the bucket to see a savings analysis.")
-        st.markdown('</div>', unsafe_allow_html=True)
+    valid_costs = [cost for cost in total_costs.values() if cost > 0]
+    if len(valid_costs) > 1:
+        highest_cost = max(valid_costs)
+        monthly_savings = highest_cost - lowest_cost
+        annual_savings = monthly_savings * 12
+
+        # Construct HTML for the metrics card to ensure they appear inside
+        metrics_html = f"""
+            <div class="savings-card">
+                <div class="metric-row">
+                    <div class="metric-container">
+                        <div class="metric-value">${lowest_cost:,.2f}</div>
+                        <div class="metric-label">Lowest Cost</div>
+                    </div>
+                    <div class="metric-container">
+                        <div class="metric-value">${highest_cost:,.2f}</div>
+                        <div class="metric-label">Highest Cost</div>
+                    </div>
+                    <div class="metric-container">
+                        <div class="metric-value">${monthly_savings:,.2f}</div>
+                        <div class="metric-label">Monthly Savings</div>
+                    </div>
+                    <div class="metric-container">
+                        <div class="metric-value">${annual_savings:,.2f}</div>
+                        <div class="metric-label">Annual Savings</div>
+                    </div>
+                </div>
+            </div>
+        """
+        st.markdown(metrics_html, unsafe_allow_html=True)
+    else:
+        st.info("Add items from at least two different cloud providers to the bucket to see a savings analysis.")
+
 else:
     st.info("Your bucket is empty. Add a resource above to begin your cost comparison.")
