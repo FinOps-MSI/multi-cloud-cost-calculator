@@ -122,7 +122,7 @@ if 'bucket' not in st.session_state:
     st.session_state.bucket = []
 
 st.title("Cross Examine")
-st.caption("Enforcing the Clarity Clause in Multi-Cloud Decision-Making")
+st.caption("Expose. Compare. Decide")
 
 FILTERED_DFS = load_and_filter_data()
 
