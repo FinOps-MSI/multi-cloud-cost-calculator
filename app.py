@@ -50,6 +50,30 @@ GOOGLE_SHEET_URL_RDS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6nm8tG
 GOOGLE_SHEET_URL_S3 = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6nm8tGltr086h1MhnosWrIbP3wJiLEIlEK4ykpvaBhQ7YMzC3X7CNA6MeRKH7WUxHIeDCpASTdYnZ/pub?gid=1926651960&single=true&output=csv"
 
 @st.cache_data(ttl="1h")
+def load_and_filter_data():
+    """Loads and filters data for all services to ensure equivalency."""
+    
+    # Define column mappings for each service to check for completeness
+    vm_compute_map = {'aws': {'meter': 'Instance Type', 'cost': 'AWS Monthly Cost'}, 'azure': {'meter': 'Azure Meter', 'cost': 'Azure Monthly Cost'}, 'gcp': {'meter': 'GCP SKU', 'cost': 'GCP Monthly Cost'}}
+    vm_db_map = {'aws': {'meter': 'Meter', 'cost': 'AWS- On Demand Monthly Cost'}, 'azure': {'meter': 'Meter.1', 'cost': 'Azure Monthly Cost'}, 'gcp': {'meter': 'GCP SKU', 'cost': 'GCP Ondemand Cost/month'}}
+    storage_map = {'aws': {'meter': 'Meter', 'cost': 'AWS Ondemand Cost'}, 'azure': {'meter': 'Meter.1', 'cost': 'Azure Ondemand Cost'}, 'gcp': {'meter': 'Meter.2', 'cost': 'GCP Ondemand Cost'}}
+    
+    data_sources = {
+        'Compute': (load_data(GOOGLE_SHEET_URL_EC2), vm_compute_map),
+        'Database': (load_data(GOOGLE_SHEET_URL_RDS), vm_db_map),
+        'Storage': (load_data(GOOGLE_SHEET_URL_S3), storage_map)
+    }
+    
+    filtered_dfs = {}
+    for service, (df, col_map) in data_sources.items():
+        if df is not None:
+            # Drop rows where any of the providers are missing a meter name or a cost.
+            required_cols = [col_map[p]['meter'] for p in col_map] + [col_map[p]['cost'] for p in col_map]
+            filtered_dfs[service] = df.dropna(subset=required_cols)
+            
+    return filtered_dfs
+
+@st.cache_data
 def load_data(url):
     try: return pd.read_csv(url, on_bad_lines='warn')
     except Exception: return None
@@ -74,9 +98,9 @@ def get_vm_comparison_from_row(df, primary_cloud, primary_meter, primary_region,
     if row_df.empty: return None
     row = row_df.iloc[0]
     equivalents = {}
-    if pd.notna(row.get(col_map['aws']['meter'])) and pd.notna(row.get(col_map['aws']['cost'])): equivalents['aws'] = {'meter': row[col_map['aws']['meter']], 'region': row[col_map['aws']['region']], 'vcpu': int(float(row[col_map['shared']['vcpu']])), 'memory': parse_memory(row[col_map['shared']['memory']]), 'cost': parse_cost(row[col_map['aws']['cost']])}
-    if pd.notna(row.get(col_map['azure']['meter'])) and pd.notna(row.get(col_map['azure']['cost'])): equivalents['azure'] = {'meter': row[col_map['azure']['meter']], 'region': row[col_map['azure']['region']], 'vcpu': int(float(row[col_map['shared']['vcpu']])), 'memory': parse_memory(row[col_map['shared']['memory']]), 'cost': parse_cost(row[col_map['azure']['cost']])}
-    if pd.notna(row.get(col_map['gcp']['meter'])) and pd.notna(row.get(col_map['gcp']['cost'])): equivalents['gcp'] = {'meter': row[col_map['gcp']['meter']], 'region': row[col_map['gcp']['region']], 'vcpu': int(float(row[col_map['gcp']['vcpu']])), 'memory': parse_memory(row[col_map['gcp']['memory']]), 'cost': parse_cost(row[col_map['gcp']['cost']])}
+    equivalents['aws'] = {'meter': row[col_map['aws']['meter']], 'region': row[col_map['aws']['region']], 'vcpu': int(float(row[col_map['shared']['vcpu']])), 'memory': parse_memory(row[col_map['shared']['memory']]), 'cost': parse_cost(row[col_map['aws']['cost']])}
+    equivalents['azure'] = {'meter': row[col_map['azure']['meter']], 'region': row[col_map['azure']['region']], 'vcpu': int(float(row[col_map['shared']['vcpu']])), 'memory': parse_memory(row[col_map['shared']['memory']]), 'cost': parse_cost(row[col_map['azure']['cost']])}
+    equivalents['gcp'] = {'meter': row[col_map['gcp']['meter']], 'region': row[col_map['gcp']['region']], 'vcpu': int(float(row[col_map['gcp']['vcpu']])), 'memory': parse_memory(row[col_map['gcp']['memory']]), 'cost': parse_cost(row[col_map['gcp']['cost']])}
     return equivalents
 
 def get_storage_comparison(df, primary_cloud, primary_tier):
@@ -88,7 +112,7 @@ def get_storage_comparison(df, primary_cloud, primary_tier):
     row = row_df.iloc[0]
     equivalents = {}
     for cloud in ['aws', 'azure', 'gcp']:
-        if pd.notna(row.get(col_map[cloud])) and pd.notna(row.get(cost_map[cloud])): equivalents[cloud] = {'tier': row[col_map[cloud]], 'region': row[region_map[cloud]], 'cost_per_gb': parse_cost(row[cost_map[cloud]])}
+        equivalents[cloud] = {'tier': row[col_map[cloud]], 'region': row[region_map[cloud]], 'cost_per_gb': parse_cost(row[cost_map[cloud]])}
     return equivalents
 
 # --- Main Application ---
@@ -100,7 +124,7 @@ if 'bucket' not in st.session_state:
 st.title("Cross Examine")
 st.caption("Enforcing the Clarity Clause in Multi-Cloud Decision-Making")
 
-RAW_DFS = {'Compute': load_data(GOOGLE_SHEET_URL_EC2), 'Database': load_data(GOOGLE_SHEET_URL_RDS), 'Storage': load_data(GOOGLE_SHEET_URL_S3)}
+FILTERED_DFS = load_and_filter_data()
 
 with st.container(border=True):
     st.subheader("1. Add a Resource to Your Bucket")
@@ -109,41 +133,38 @@ with st.container(border=True):
     with col1:
         csp_map = {'AWS': 'aws', 'Azure': 'azure', 'GCP': 'gcp'}
         selected_csp = csp_map[st.selectbox("Cloud Provider", csp_map.keys())]
-        service_type = st.selectbox("Service Type", RAW_DFS.keys())
+        service_type = st.selectbox("Service Type", FILTERED_DFS.keys())
     
     with col2:
-        df = RAW_DFS.get(service_type)
-        if df is None:
-            st.error(f"Data for {service_type} could not be loaded."); st.stop()
+        df = FILTERED_DFS.get(service_type)
+        if df is None or df.empty:
+            st.warning(f"No configurations with full cross-cloud equivalents found for {service_type}."); st.stop()
         
     if service_type in ['Compute', 'Database']:
         col_maps = {
             'Compute': {'aws': {'meter': 'Instance Type', 'region': 'Region', 'cost': 'AWS Monthly Cost'}, 'azure': {'meter': 'Azure Meter', 'region': 'AzureRegion', 'cost': 'Azure Monthly Cost'}, 'gcp': {'meter': 'GCP SKU', 'region': 'GCP Region', 'cost': 'GCP Monthly Cost', 'vcpu': 'vCPUs', 'memory': 'Memory'}, 'shared': {'vcpu': 'vCPUs', 'memory': 'Memory'}},
             'Database': {'aws': {'meter': 'Meter', 'region': 'Region', 'cost': 'AWS- On Demand Monthly Cost'}, 'azure': {'meter': 'Meter.1', 'region': 'AzureRegion', 'cost': 'Azure Monthly Cost'}, 'gcp': {'meter': 'GCP SKU', 'region': 'GCP Region', 'cost': 'GCP Ondemand Cost/month', 'vcpu': 'vCPUs.1', 'memory': 'Memory.1'}, 'shared': {'vcpu': 'vCPUs', 'memory': 'Memory'}}
         }
-        current_map = col_maps[service_type]
-        meter_col = current_map[selected_csp]['meter']
-        region_col = current_map[selected_csp]['region']
+        current_map, meter_col, region_col = col_maps[service_type], col_maps[service_type][selected_csp]['meter'], col_maps[service_type][selected_csp]['region']
         
-        filtered_df = df.dropna(subset=[meter_col, region_col])
-        instance_options = {f"{row[meter_col]}@{row[region_col]}": f"{row[meter_col]} ({row[region_col]})" for _, row in filtered_df.iterrows()}
+        instance_options = {f"{row[meter_col]}@{row[region_col]}": f"{row[meter_col]} ({row[region_col]})" for _, row in df.iterrows()}
         with col2:
             selected_key = st.selectbox("Instance", options=instance_options.keys(), format_func=lambda x: instance_options.get(x, x), key=f"instance_{selected_csp}_{service_type}")
         with col3:
             quantity = st.number_input("Quantity", min_value=1, value=1, key=f"qty_{selected_csp}_{service_type}")
             if st.button("Add to Bucket", type="primary", use_container_width=True, key=f"add_{selected_csp}_{service_type}"):
-                meter, region = selected_key.split('@')
-                equivalents = get_vm_comparison_from_row(df, selected_csp, meter, region, current_map)
-                if equivalents:
-                    st.session_state.bucket.append({"id": str(uuid.uuid4()), "service_type": service_type, "description": f"{quantity}x {meter} ({region})", "equivalents": equivalents, "quantity": quantity})
-                    st.success(f"Added {meter} to bucket!")
+                if selected_key:
+                    meter, region = selected_key.split('@')
+                    equivalents = get_vm_comparison_from_row(df, selected_csp, meter, region, current_map)
+                    if equivalents:
+                        st.session_state.bucket.append({"id": str(uuid.uuid4()), "service_type": service_type, "description": f"{quantity}x {meter} ({region})", "equivalents": equivalents, "quantity": quantity})
+                        st.success(f"Added {meter} to bucket!")
     
     elif service_type == 'Storage':
         tier_col_map = {'aws': 'Meter', 'azure': 'Meter.1', 'gcp': 'Meter.2'}
         tier_col = tier_col_map[selected_csp]
-        filtered_df = df.dropna(subset=[tier_col])
         with col2:
-            selected_tier = st.selectbox("Storage Tier", options=filtered_df[tier_col].unique(), key=f"tier_{selected_csp}")
+            selected_tier = st.selectbox("Storage Tier", options=df[tier_col].unique(), key=f"tier_{selected_csp}")
         with col3:
             storage_gb = st.number_input("Storage (GB)", min_value=1, value=1000, key=f"gb_{selected_csp}")
             if st.button("Add to Bucket", type="primary", use_container_width=True, key=f"add_{selected_csp}_storage"):
@@ -220,7 +241,7 @@ if st.session_state.bucket:
         """
         st.markdown(metrics_html, unsafe_allow_html=True)
     else:
-        st.info("Add items from clouds with different costs to see a savings analysis.")
+        st.info("Add items to your bucket to see a savings analysis.")
 
 else:
     st.info("Your bucket is empty. Add a resource above to begin your cost comparison.")
